@@ -1,0 +1,14 @@
+node_modules/
+admin-panel/node_modules/
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+.DS_Store
+dist/
+admin-panel/dist/
+admin-panel/build/
+*.log
+
+
