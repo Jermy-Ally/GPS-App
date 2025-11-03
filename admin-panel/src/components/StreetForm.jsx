@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { API_URL } from '../config/api'
 import './StreetForm.css'
 
 function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, drawingLength, onDrawComplete }) {
@@ -48,7 +49,7 @@ function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, 
     // The map editor handles the geometry/nodes update
     if (!isCreating && street) {
       try {
-        const response = await fetch(`http://localhost:3001/api/streets/${street.id}`, {
+        const response = await fetch(`${API_URL}/streets/${street.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'

@@ -3,6 +3,7 @@ import MapEditor from './components/MapEditor'
 import StreetList from './components/StreetList'
 import StreetForm from './components/StreetForm'
 import ConfirmDialog from './components/ConfirmDialog'
+import { API_URL } from './config/api'
 import './App.css'
 
 function App() {
@@ -18,7 +19,7 @@ function App() {
 
   const fetchStreets = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/streets')
+      const response = await fetch(`${API_URL}/streets`)
       const data = await response.json()
       setStreets(data)
     } catch (error) {
@@ -63,7 +64,7 @@ function App() {
   const confirmDelete = async () => {
     const { streetId } = deleteConfirm
     try {
-      const response = await fetch(`http://localhost:3001/api/streets/${streetId}`, {
+      const response = await fetch(`${API_URL}/streets/${streetId}`, {
         method: 'DELETE'
       })
       

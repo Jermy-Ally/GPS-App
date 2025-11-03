@@ -26,8 +26,22 @@ app.get('/api/health', (req, res) => {
 // Initialize database
 db.init();
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// Serve static files in production (built React app)
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '..', 'admin-panel', 'dist');
+  app.use(express.static(distPath));
+  
+  // Handle React Router - all routes serve index.html
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`Serving production build from admin-panel/dist`);
+  }
 });
 
 

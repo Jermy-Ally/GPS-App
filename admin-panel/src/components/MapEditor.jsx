@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import axios from 'axios'
 import NameInputDialog from './NameInputDialog'
+import { API_URL } from '../config/api'
 import './MapEditor.css'
 
 // You'll need to add your Mapbox token here
@@ -738,7 +739,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     }
 
     try {
-      const response = await axios.put(`http://localhost:3001/api/streets/${editingStreet.id}`, {
+      const response = await axios.put(`${API_URL}/streets/${editingStreet.id}`, {
         name: editingStreet.name,
         length: length,
         geometry: geometry,
@@ -840,7 +841,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
 
           // Save the street
           try {
-            const response = await axios.post('http://localhost:3001/api/streets', {
+            const response = await axios.post(`${API_URL}/streets`, {
               name: streetName,
               length: pendingStreetData.length,
               geometry: geometry,
