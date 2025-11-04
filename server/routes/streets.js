@@ -47,6 +47,16 @@ router.post('/', (req, res) => {
       nodes: nodes
     });
 
+    // Auto-generate reference codes every 25 meters
+    if (geometry && geometry.coordinates && geometry.coordinates.length >= 2) {
+      try {
+        db.generateReferenceCodesForStreet(streetId, name.trim(), geometry.coordinates);
+      } catch (error) {
+        console.error('Error generating reference codes:', error);
+        // Don't fail the street creation if reference code generation fails
+      }
+    }
+
     res.status(201).json({ 
       id: streetId,
       message: 'Street created successfully' 
@@ -76,6 +86,18 @@ router.put('/:id', (req, res) => {
     });
 
     if (success) {
+      // Auto-regenerate reference codes when street is updated
+      // Get the updated street to get its geometry
+      const updatedStreet = db.getStreetById(streetId);
+      if (updatedStreet && updatedStreet.geometry && updatedStreet.geometry.coordinates && updatedStreet.geometry.coordinates.length >= 2) {
+        try {
+          db.generateReferenceCodesForStreet(streetId, name.trim(), updatedStreet.geometry.coordinates);
+        } catch (error) {
+          console.error('Error regenerating reference codes:', error);
+          // Don't fail the street update if reference code generation fails
+        }
+      }
+      
       res.json({ message: 'Street updated successfully' });
     } else {
       res.status(500).json({ error: 'Failed to update street' });

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { API_URL } from '../config/api'
 import './StreetForm.css'
 
-function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, drawingLength, onDrawComplete }) {
+function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, drawingLength, onDrawComplete, calculatedLength, getCurrentCoordinates }) {
   const [name, setName] = useState('')
   const [length, setLength] = useState(0)
 
@@ -15,6 +15,13 @@ function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, 
       setLength(0)
     }
   }, [street])
+
+  // Update length when calculated length changes (for editing mode)
+  useEffect(() => {
+    if (!isCreating && calculatedLength !== undefined && calculatedLength > 0) {
+      setLength(calculatedLength)
+    }
+  }, [calculatedLength, isCreating])
 
   // Update length when drawing coordinates change (for new street creation)
   useEffect(() => {
@@ -46,8 +53,32 @@ function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, 
     }
 
     // If we're editing, we need to update the street
-    // The map editor handles the geometry/nodes update
     if (!isCreating && street) {
+      // Get current edited coordinates from map editor (if user edited the path)
+      const currentData = getCurrentCoordinates ? getCurrentCoordinates() : null
+      
+      // Use edited coordinates if available, otherwise use existing street geometry
+      let geometry, nodes, finalLength
+      
+      if (currentData && currentData.coordinates && currentData.coordinates.length >= 2) {
+        // User edited the path - use the edited coordinates
+        nodes = currentData.coordinates.map((coord, index) => ({
+          latitude: coord[1],
+          longitude: coord[0],
+          sequence: index
+        }))
+        geometry = {
+          type: 'LineString',
+          coordinates: currentData.coordinates
+        }
+        finalLength = parseFloat(length) || currentData.length || 0
+      } else {
+        // User only changed name/length - use existing geometry
+        geometry = street.geometry
+        nodes = street.nodes || []
+        finalLength = parseFloat(length) || street.length || 0
+      }
+
       try {
         const response = await fetch(`${API_URL}/streets/${street.id}`, {
           method: 'PUT',
@@ -56,9 +87,9 @@ function StreetForm({ street, isCreating, onSave, onCancel, drawingCoordinates, 
           },
           body: JSON.stringify({
             name: name.trim(),
-            length: parseFloat(length) || 0,
-            geometry: street.geometry,
-            nodes: street.nodes || []
+            length: finalLength,
+            geometry: geometry,
+            nodes: nodes
           })
         })
 

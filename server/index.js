@@ -5,6 +5,8 @@ const path = require('path');
 require('dotenv').config();
 
 const streetRoutes = require('./routes/streets');
+const propertyRoutes = require('./routes/properties');
+const referenceCodeRoutes = require('./routes/referenceCodes');
 const db = require('./database/db');
 
 const app = express();
@@ -17,6 +19,8 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api/streets', streetRoutes);
+app.use('/api/properties', propertyRoutes);
+app.use('/api/reference-codes', referenceCodeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -37,6 +37,14 @@
   overflow-y: auto;
 }
 
+.sidebar-section {
+  border-bottom: 2px solid #ddd;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
 .sidebar-header {
   padding: 1rem;
   border-bottom: 1px solid #ddd;
@@ -49,6 +57,12 @@
 .sidebar-header h2 {
   font-size: 1.2rem;
   margin: 0;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .map-container {
