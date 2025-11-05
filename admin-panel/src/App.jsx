@@ -31,14 +31,15 @@ function App() {
     fetchReferenceCodes()
   }, [])
 
-  const fetchStreets = async () => {
+  const fetchStreets = async (preserveSelection = true) => {
     try {
       const response = await fetch(`${API_URL}/streets`)
       const data = await response.json()
       setStreets(data)
       
       // Update selectedStreet if it exists to point to the updated street from the list
-      if (selectedStreet) {
+      // Only if preserveSelection is true (default behavior)
+      if (preserveSelection && selectedStreet) {
         const updatedStreet = data.find(s => s.id === selectedStreet.id)
         if (updatedStreet) {
           setSelectedStreet(updatedStreet)
@@ -70,11 +71,11 @@ function App() {
   }
 
   const handleStreetSaved = () => {
-    fetchStreets()
-    fetchReferenceCodes() // Refresh reference codes after street update
     setIsEditing(false)
     setIsCreating(false)
-    setSelectedStreet(null)
+    setSelectedStreet(null) // Clear selection
+    fetchStreets(false) // Don't preserve selection - clear it
+    fetchReferenceCodes() // Refresh reference codes after street update
   }
 
   const handleStreetDelete = (streetId, streetName) => {
@@ -352,6 +353,7 @@ function App() {
             streets={streets}
             selectedStreet={selectedStreet}
             onStreetSelect={handleStreetSelect}
+            onStreetEdit={handleStreetEdit}
             onStreetUpdate={() => {
               fetchStreets()
               fetchReferenceCodes() // Refresh reference codes after street update

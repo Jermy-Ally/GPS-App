@@ -19,6 +19,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-items: flex-start;
+  width: auto;
 }
 
 .map-control-btn {
@@ -31,6 +33,9 @@
   font-weight: 500;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   transition: all 0.2s;
+  width: 100%;
+  min-width: 180px;
+  text-align: center;
 }
 
 .map-control-btn:hover {
@@ -96,6 +101,23 @@
   margin-top: 0.5rem;
 }
 
+.editing-tip {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #333;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  max-width: 80%;
+  text-align: center;
+  line-height: 1.5;
+}
+
 .street-label-marker {
   background: transparent;
   color: #1e40af;
@@ -122,7 +144,9 @@
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   transition: transform 0.2s, background-color 0.2s;
-  cursor: grab;
+  cursor: move;
+  pointer-events: auto;
+  z-index: 1000;
 }
 
 .drawing-marker:hover {
@@ -130,10 +154,11 @@
   background: #3b82f6;
   border-color: #dbeafe;
   box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+  cursor: move;
 }
 
 .drawing-marker:active {
-  cursor: grabbing;
+  cursor: move;
   transform: scale(1.5);
 }
 

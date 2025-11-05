@@ -14,7 +14,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HER
 const DEFAULT_CENTER = [21.4102312, -5.355093] // [longitude, latitude] - Note: Mapbox uses [lng, lat] format
 const DEFAULT_ZOOM = 15 // Increased zoom for better visibility
 
-function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, isCreating, isEditing, onDrawingCancel, onLengthChange, onGetCurrentCoordinates, onStartEditing, properties, isAddingProperty, onPropertyClick, selectedProperty, onCancelAddingProperty, referenceCodes = [], showReferenceCodes = true, onToggleReferenceCodes }) {
+function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onStreetUpdate, isCreating, isEditing, onDrawingCancel, onLengthChange, onGetCurrentCoordinates, onStartEditing, properties, isAddingProperty, onPropertyClick, selectedProperty, onCancelAddingProperty, referenceCodes = [], showReferenceCodes = true, onToggleReferenceCodes }) {
   const mapContainer = useRef(null)
   const map = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -24,11 +24,13 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
   const [showNameDialog, setShowNameDialog] = useState(false)
   const [pendingStreetData, setPendingStreetData] = useState(null)
   const [mapStyle, setMapStyle] = useState('satellite') // 'satellite' or 'streets'
+  const [lineTooltip, setLineTooltip] = useState({ show: false, x: 0, y: 0 })
   const markersRef = useRef([])
   const drawingMarkersRef = useRef([]) // Track drawing markers separately
   const propertyMarkersRef = useRef([]) // Track property markers
   const referenceCodeMarkersRef = useRef([]) // Track reference code markers
   const tempPropertyMarkerRef = useRef(null) // Temporary marker when placing new property
+  const draggedPropertyPositionRef = useRef(null) // Track position of property being dragged to prevent revert
   // Use refs to track state that needs to be accessed in event handlers
   const isDrawingRef = useRef(false)
   const drawingCoordinatesRef = useRef([])
@@ -144,6 +146,9 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
         setMapLoaded(true)
         setupMapLayers()
         
+        // Setup street click handler after layers are created
+        setupStreetLayerClickHandler()
+        
         // Ensure map is properly centered and visible
         if (map.current) {
           map.current.resize() // Resize to ensure tiles load properly
@@ -224,10 +229,14 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       console.log('MapEditor cleanup - removing map')
       if (map.current) {
         try {
-          // Remove click handler
+          // Remove click handlers
           if (map.current._clickHandler) {
             map.current.off('click', map.current._clickHandler)
           }
+          // Remove street layer click handlers
+          map.current.off('click', 'streets-layer')
+          map.current.off('mouseenter', 'streets-layer')
+          map.current.off('mouseleave', 'streets-layer')
           map.current.remove()
           map.current = null
         } catch (e) {
@@ -245,15 +254,25 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       }
     }
   }, [streets, mapLoaded])
+  
+  // Re-setup street click handler when streets change or drawing mode changes
+  useEffect(() => {
+    if (mapLoaded && map.current && map.current.getLayer('streets-layer')) {
+      setupStreetLayerClickHandler()
+    }
+  }, [streets, mapLoaded, isDrawing])
 
   useEffect(() => {
     if (mapLoaded && properties) {
       updatePropertyMarkers()
+      // Clear dragged position ref when properties update - the server should have the correct coordinates
+      draggedPropertyPositionRef.current = null
     }
   }, [properties, mapLoaded, selectedProperty])
 
   useEffect(() => {
-    if (mapLoaded && referenceCodes) {
+    if (mapLoaded) {
+      console.log('Reference codes prop changed, updating markers:', referenceCodes?.length || 0)
       updateReferenceCodeMarkers()
     }
   }, [referenceCodes, mapLoaded, showReferenceCodes])
@@ -269,8 +288,8 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     // Only highlight if not in drawing/editing mode
     if (mapLoaded && selectedStreet && !isDrawing) {
       highlightStreet(selectedStreet)
-    } else if (mapLoaded && isDrawing) {
-      // Clear yellow highlight when editing
+    } else if (mapLoaded && (!selectedStreet || isDrawing)) {
+      // Clear yellow highlight when no street is selected or when editing
       const source = map.current?.getSource('selected-street')
       if (source && source.setData) {
         source.setData({
@@ -325,6 +344,70 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     // Update ref for next comparison
     prevIsEditingRef.current = isEditing
   }, [isEditing, editingStreet, isDrawing])
+
+  // Setup click handler for streets layer
+  const setupStreetLayerClickHandler = () => {
+    if (!map.current) return
+    
+    // Remove existing handlers if any
+    map.current.off('click', 'streets-layer')
+    map.current.off('mouseenter', 'streets-layer')
+    map.current.off('mouseleave', 'streets-layer')
+    
+    // Only setup if not in drawing/editing mode
+    if (!isDrawingRef.current) {
+      // Click handler for streets
+      map.current.on('click', 'streets-layer', (e) => {
+        // Don't handle street clicks if in drawing/editing mode
+        if (isDrawingRef.current) {
+          return
+        }
+        
+        // Don't handle if clicking on controls or other elements
+        if (e.originalEvent && e.originalEvent.target) {
+          const target = e.originalEvent.target
+          if (target.closest('.map-controls') || target.closest('.mapboxgl-marker') || target.closest('.mapboxgl-popup')) {
+            return
+          }
+        }
+        
+        // Stop event propagation to prevent map click handler
+        e.originalEvent.stopPropagation()
+        
+        // Find the clicked street
+        if (e.features && e.features.length > 0) {
+          const clickedFeature = e.features[0]
+          const streetId = clickedFeature.properties?.id
+          
+          if (streetId) {
+            // Find the street object from the current streets array
+            // Use the streets prop directly (closure will capture current value)
+            const clickedStreet = streets.find(s => s.id === streetId)
+            if (clickedStreet) {
+              console.log('Street clicked on map, entering edit mode:', clickedStreet.name)
+              // Same effect as clicking "Edit" button in streets table
+              if (onStreetEdit) {
+                onStreetEdit(clickedStreet)
+              }
+            }
+          }
+        }
+      })
+      
+      // Change cursor to pointer when hovering over streets
+      map.current.on('mouseenter', 'streets-layer', () => {
+        if (!isDrawingRef.current && map.current) {
+          map.current.getCanvas().style.cursor = 'pointer'
+        }
+      })
+      
+      map.current.on('mouseleave', 'streets-layer', () => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = ''
+        }
+      })
+    }
+  }
 
   const setupMapLayers = () => {
     if (!map.current) return
@@ -409,6 +492,11 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       })
     }
 
+    // Re-setup click handler after updating streets data
+    if (map.current.getLayer('streets-layer')) {
+      setupStreetLayerClickHandler()
+    }
+
     // Add markers for street names
     clearMarkers()
     streets.forEach(street => {
@@ -446,19 +534,20 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       if (property.latitude !== undefined && property.longitude !== undefined) {
         // Create container for icon and label
         const container = document.createElement('div')
+        const isSelected = selectedProperty && selectedProperty.id === property.id
         container.style.position = 'relative'
         container.style.display = 'flex'
         container.style.flexDirection = 'column'
         container.style.alignItems = 'center'
-        container.style.cursor = 'pointer'
+        container.style.cursor = isSelected ? 'move' : 'pointer'
         
         // Create sharp icon (pin/dot)
         const icon = document.createElement('div')
-        icon.className = `property-icon ${selectedProperty && selectedProperty.id === property.id ? 'selected' : ''}`
+        icon.className = `property-icon ${isSelected ? 'selected' : ''}`
         icon.style.width = '12px'
         icon.style.height = '12px'
         icon.style.borderRadius = '50%'
-        icon.style.backgroundColor = selectedProperty && selectedProperty.id === property.id ? '#2196f3' : '#ff6b6b'
+        icon.style.backgroundColor = isSelected ? '#2196f3' : '#ff6b6b'
         icon.style.border = '2px solid white'
         icon.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)'
         icon.style.position = 'relative'
@@ -476,7 +565,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
             height: 0;
             border-left: 4px solid transparent;
             border-right: 4px solid transparent;
-            border-top: 4px solid ${selectedProperty && selectedProperty.id === property.id ? '#2196f3' : '#ff6b6b'};
+            border-top: 4px solid ${isSelected ? '#2196f3' : '#ff6b6b'};
           "></div>
         `
         
@@ -503,11 +592,18 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
         container.appendChild(label)
         container.appendChild(icon)
         
+        // Use dragged position if available, otherwise use property coordinates
+        const draggedPos = draggedPropertyPositionRef.current
+        const useDraggedPos = draggedPos && draggedPos.propertyId === property.id
+        const markerLng = useDraggedPos ? draggedPos.longitude : property.longitude
+        const markerLat = useDraggedPos ? draggedPos.latitude : property.latitude
+        
         const marker = new mapboxgl.Marker({ 
           element: container,
-          anchor: 'bottom' // Anchor at bottom so the point is precise
+          anchor: 'bottom', // Anchor at bottom so the point is precise
+          draggable: isSelected // Make draggable only when selected
         })
-          .setLngLat([property.longitude, property.latitude])
+          .setLngLat([markerLng, markerLat])
           .addTo(map.current)
 
         container.addEventListener('click', () => {
@@ -515,6 +611,11 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
             onPropertyClick(property)
           }
         })
+
+        // Setup drag handlers for selected properties
+        if (isSelected) {
+          setupPropertyDragHandlers(marker, container, property)
+        }
 
         propertyMarkersRef.current.push(marker)
       }
@@ -566,17 +667,22 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
   }
 
   const updateReferenceCodeMarkers = () => {
-    if (!map.current || !mapLoaded) return
+    if (!map.current || !mapLoaded) {
+      console.log('Cannot update reference code markers: map not loaded')
+      return
+    }
     if (!showReferenceCodes) {
+      console.log('Reference codes hidden, clearing markers')
       clearReferenceCodeMarkers()
       return
     }
     if (!referenceCodes || !Array.isArray(referenceCodes) || referenceCodes.length === 0) {
-      console.log('No reference codes to display:', { referenceCodes, showReferenceCodes })
+      console.log('No reference codes to display, clearing markers:', { referenceCodes, showReferenceCodes })
+      clearReferenceCodeMarkers()
       return
     }
 
-    console.log('Updating reference code markers:', referenceCodes.length)
+    console.log('Updating reference code markers:', referenceCodes.length, 'codes')
 
     // Clear existing reference code markers
     clearReferenceCodeMarkers()
@@ -606,6 +712,51 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     }
   }
 
+  // Helper function to clear temporary drawing layer and source
+  const clearTempDrawingLayer = () => {
+    if (!map.current) return
+    
+    const tempSourceId = 'temp-drawing-line'
+    const tempLayerId = 'temp-drawing-layer'
+    
+    // Remove event handlers if layer exists
+    if (map.current.getLayer(tempLayerId)) {
+      map.current.off('mousemove', tempLayerId)
+      map.current.off('mouseleave', tempLayerId)
+      map.current.off('click', tempLayerId)
+      map.current.removeLayer(tempLayerId)
+    }
+    if (map.current.getSource(tempSourceId)) {
+      map.current.removeSource(tempSourceId)
+    }
+  }
+
+  // Helper function to convert coordinates array to nodes array
+  const coordinatesToNodes = (coords) => {
+    return coords.map((coord, index) => ({
+      latitude: coord[1],
+      longitude: coord[0],
+      sequence: index
+    }))
+  }
+
+  // Helper function to create geometry object from coordinates
+  const createGeometry = (coordinates) => {
+    return {
+      type: 'LineString',
+      coordinates
+    }
+  }
+
+  // Helper function to reset drawing state
+  const resetDrawingState = () => {
+    isDrawingRef.current = false
+    drawingCoordinatesRef.current = []
+    setIsDrawing(false)
+    setDrawingCoordinates([])
+    clearMarkers()
+  }
+
   const removeLastPoint = () => {
     if (drawingCoordinatesRef.current.length === 0) return
 
@@ -626,33 +777,160 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     // Update the temporary line
     if (newCoords.length > 1) {
       drawTemporaryLine(newCoords)
-    } else if (newCoords.length === 1) {
-      // If only one point left, remove the line
-      if (map.current) {
-        const tempSourceId = 'temp-drawing-line'
-        const tempLayerId = 'temp-drawing-layer'
-        if (map.current.getLayer(tempLayerId)) {
-          map.current.removeLayer(tempLayerId)
-        }
-        if (map.current.getSource(tempSourceId)) {
-          map.current.removeSource(tempSourceId)
-        }
-      }
     } else {
-      // No points left
-      if (map.current) {
-        const tempSourceId = 'temp-drawing-line'
-        const tempLayerId = 'temp-drawing-layer'
-        if (map.current.getLayer(tempLayerId)) {
-          map.current.removeLayer(tempLayerId)
-        }
-        if (map.current.getSource(tempSourceId)) {
-          map.current.removeSource(tempSourceId)
-        }
-      }
+      // If one or zero points left, remove the line
+      clearTempDrawingLayer()
     }
 
     console.log('Last point removed. Points remaining:', newCoords.length)
+  }
+
+  // Helper function to create a draggable drawing marker with all handlers
+  const createDrawingMarker = (lng, lat) => {
+    // Create marker element
+    const el = document.createElement('div')
+    el.className = 'drawing-marker'
+    el.title = 'Drag to adjust • Right-click to remove'
+    
+    // Create and configure marker
+    const marker = new mapboxgl.Marker({ 
+      element: el,
+      draggable: true,
+      anchor: 'center'
+    }).setLngLat([lng, lat]).addTo(map.current)
+    
+    // Setup drag event handlers
+    setupMarkerDragHandlers(marker, el)
+    
+    return marker
+  }
+
+  // Helper function to setup drag event handlers for a property marker
+  const setupPropertyDragHandlers = (marker, el, property) => {
+    // Handle drag start - disable map panning
+    marker.on('dragstart', () => {
+      if (map.current) {
+        map.current.dragPan.disable()
+      }
+    })
+    
+    // Handle drag end - update property coordinates
+    marker.on('dragend', async () => {
+      // Re-enable map panning after drag
+      if (map.current) {
+        map.current.dragPan.enable()
+      }
+      
+      const newLngLat = marker.getLngLat()
+      
+      // Store the new position to prevent revert when markers are recreated
+      draggedPropertyPositionRef.current = {
+        propertyId: property.id,
+        latitude: newLngLat.lat,
+        longitude: newLngLat.lng
+      }
+      
+      try {
+        // Update property via API
+        const response = await axios.put(`${API_URL}/properties/${property.id}`, {
+          number: property.number,
+          latitude: newLngLat.lat,
+          longitude: newLngLat.lng,
+          street_id: property.street_id || null
+        })
+        
+        if (response.status === 200) {
+          console.log('Property coordinates updated:', { lng: newLngLat.lng, lat: newLngLat.lat })
+          // Keep the dragged position ref indefinitely - it will be cleared when properties refresh naturally
+          // (e.g., when user creates/edits another property, or on page refresh)
+        } else {
+          console.error('Failed to update property coordinates')
+          draggedPropertyPositionRef.current = null
+          // Revert marker position on error
+          marker.setLngLat([property.longitude, property.latitude])
+        }
+      } catch (error) {
+        console.error('Error updating property coordinates:', error)
+        draggedPropertyPositionRef.current = null
+        // Revert marker position on error
+        marker.setLngLat([property.longitude, property.latitude])
+        alert('Failed to update property coordinates. Please try again.')
+      }
+    })
+  }
+
+  // Helper function to setup drag event handlers for a drawing marker
+  const setupMarkerDragHandlers = (marker, el) => {
+    // Handle drag start - disable map panning
+    marker.on('dragstart', () => {
+      // Prevent map panning during drag
+      if (map.current) {
+        map.current.dragPan.disable()
+      }
+    })
+    
+    // Handle drag - update line in real-time
+    marker.on('drag', () => {
+      // Update line during drag for real-time feedback
+      const newLngLat = marker.getLngLat()
+      const currentCoords = drawingCoordinatesRef.current
+      const markerIndex = drawingMarkersRef.current.indexOf(marker)
+      
+      if (markerIndex !== -1 && markerIndex < currentCoords.length) {
+        const updatedCoords = [...currentCoords]
+        updatedCoords[markerIndex] = [newLngLat.lng, newLngLat.lat]
+        drawingCoordinatesRef.current = updatedCoords
+        
+        // Update the line in real-time
+        if (updatedCoords.length > 1) {
+          drawTemporaryLine(updatedCoords)
+        }
+      }
+    })
+    
+    // Handle drag end - finalize update and re-enable panning
+    marker.on('dragend', () => {
+      // Re-enable map panning after drag
+      if (map.current) {
+        map.current.dragPan.enable()
+      }
+      const newLngLat = marker.getLngLat()
+      const currentCoords = drawingCoordinatesRef.current
+      
+      // Find marker's current index in the array (always in sync with coordinates)
+      const markerIndex = drawingMarkersRef.current.indexOf(marker)
+      
+      if (markerIndex !== -1 && markerIndex < currentCoords.length) {
+        const newCoords = [...currentCoords]
+        newCoords[markerIndex] = [newLngLat.lng, newLngLat.lat]
+        
+        drawingCoordinatesRef.current = newCoords
+        setDrawingCoordinates(newCoords)
+        
+        // Update the line
+        if (newCoords.length > 1) {
+          drawTemporaryLine(newCoords)
+        }
+        
+        // Recalculate and update length
+        updateLengthFromCoordinates(newCoords)
+        
+        console.log('Point moved to:', { lng: newLngLat.lng, lat: newLngLat.lat, index: markerIndex })
+      } else {
+        console.warn('Could not find marker index for drag update', { markerIndex, coordsLength: currentCoords.length })
+      }
+    })
+    
+    // Handle right-click to remove
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      
+      const markerArrayIndex = drawingMarkersRef.current.indexOf(marker)
+      if (markerArrayIndex !== -1) {
+        removePointAtIndex(markerArrayIndex)
+      }
+    })
   }
 
   const removePointAtIndex = (index) => {
@@ -676,30 +954,9 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     // Update the temporary line
     if (newCoords.length > 1) {
       drawTemporaryLine(newCoords)
-    } else if (newCoords.length === 1) {
-      // If only one point left, remove the line
-      if (map.current) {
-        const tempSourceId = 'temp-drawing-line'
-        const tempLayerId = 'temp-drawing-layer'
-        if (map.current.getLayer(tempLayerId)) {
-          map.current.removeLayer(tempLayerId)
-        }
-        if (map.current.getSource(tempSourceId)) {
-          map.current.removeSource(tempSourceId)
-        }
-      }
     } else {
-      // No points left
-      if (map.current) {
-        const tempSourceId = 'temp-drawing-line'
-        const tempLayerId = 'temp-drawing-layer'
-        if (map.current.getLayer(tempLayerId)) {
-          map.current.removeLayer(tempLayerId)
-        }
-        if (map.current.getSource(tempSourceId)) {
-          map.current.removeSource(tempSourceId)
-        }
-      }
+      // If one or zero points left, remove the line
+      clearTempDrawingLayer()
     }
 
     console.log('Point removed at index', index, '. Points remaining:', newCoords.length)
@@ -722,6 +979,19 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       if (target.closest('.map-controls') || target.closest('.mapboxgl-marker') || target.closest('.mapboxgl-popup')) {
         return
       }
+    }
+    
+    // If in editing mode, check if click was on a line segment
+    if (isDrawingRef.current && editingStreetRef.current) {
+      const { lng, lat } = e.lngLat
+      const [segmentIndex, pointOnSegment] = findClickedSegmentIndex(lng, lat)
+      
+      // If click was on a line segment, insert point on that segment
+      if (segmentIndex >= 0 && pointOnSegment) {
+        insertPointOnLine(segmentIndex, pointOnSegment)
+        return
+      }
+      // Otherwise, continue to add point to end (for extending street)
     }
     
     // Check both ref and state to ensure we catch property mode
@@ -856,61 +1126,8 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       }
 
       // Place marker at click point (draggable)
-      const el = document.createElement('div')
-      el.className = 'drawing-marker'
-      el.title = 'Drag to adjust • Right-click to remove'
-      el.style.cursor = 'grab'
-      
-      const marker = new mapboxgl.Marker({ 
-        element: el,
-        draggable: true 
-      }).setLngLat([lng, lat]).addTo(map.current)
-      
-      // Handle drag events - find index dynamically to handle removed points
-      marker.on('dragstart', () => {
-        el.style.cursor = 'grabbing'
-      })
-      
-      marker.on('dragend', () => {
-        el.style.cursor = 'grab'
-        const newLngLat = marker.getLngLat()
-        const currentCoords = drawingCoordinatesRef.current
-        
-        // Find marker's current index in the array (always in sync with coordinates)
-        const markerIndex = drawingMarkersRef.current.indexOf(marker)
-        
-        if (markerIndex !== -1 && markerIndex < currentCoords.length) {
-          const newCoords = [...currentCoords]
-          newCoords[markerIndex] = [newLngLat.lng, newLngLat.lat]
-          
-          drawingCoordinatesRef.current = newCoords
-          setDrawingCoordinates(newCoords)
-          
-          // Update the line
-          if (newCoords.length > 1) {
-            drawTemporaryLine(newCoords)
-          }
-          
-          // Recalculate and update length
-          updateLengthFromCoordinates(newCoords)
-          
-          console.log('Point moved to:', { lng: newLngLat.lng, lat: newLngLat.lat, index: markerIndex })
-        } else {
-          console.warn('Could not find marker index for drag update', { markerIndex, coordsLength: currentCoords.length })
-        }
-      })
-      
-      // Handle right-click to remove - find index dynamically
-      el.addEventListener('contextmenu', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        
-        // Find marker index dynamically
-        const markerArrayIndex = drawingMarkersRef.current.indexOf(marker)
-        if (markerArrayIndex !== -1) {
-          removePointAtIndex(markerArrayIndex)
-        }
-      })
+      // Use the EXACT coordinates from the click event
+      const marker = createDrawingMarker(lng, lat)
       
       // Add marker to the correct position in the array
       if (addedToStart) {
@@ -923,6 +1140,205 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       
       // Recalculate and update length after adding point
       updateLengthFromCoordinates(newCoords)
+    }
+  }
+
+  // Helper function to find closest point on a line segment
+  const findClosestPointOnSegment = (point, segmentStart, segmentEnd) => {
+    const [result, _] = findClosestPointOnSegmentWithT(point, segmentStart, segmentEnd)
+    return result
+  }
+
+  // Helper function to find closest point on a line segment and return the t parameter
+  // Returns [point, t] where t is 0-1 (0 = at start, 1 = at end)
+  const findClosestPointOnSegmentWithT = (point, segmentStart, segmentEnd) => {
+    const [px, py] = point
+    const [x1, y1] = segmentStart
+    const [x2, y2] = segmentEnd
+
+    // Vector from segment start to end
+    const dx = x2 - x1
+    const dy = y2 - y1
+    
+    // If segment is zero length, return start point
+    const lengthSquared = dx * dx + dy * dy
+    if (lengthSquared === 0) return [segmentStart, 0]
+
+    // Calculate t, the parameter for the closest point on the line segment
+    // t = 0 means at segmentStart, t = 1 means at segmentEnd
+    let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared
+    
+    // Clamp t to [0, 1] to keep point on segment
+    t = Math.max(0, Math.min(1, t))
+    
+    // Return the closest point on the segment and the t parameter
+    return [[x1 + t * dx, y1 + t * dy], t]
+  }
+
+  // Helper function to check if a point is near an existing marker
+  // Uses a threshold that's approximately equivalent to ~20 pixels on screen
+  // (adjusted based on zoom level for better accuracy)
+  const isClickNearMarker = (clickLng, clickLat) => {
+    const coords = drawingCoordinatesRef.current
+    if (coords.length === 0) return false
+
+    // Calculate threshold based on zoom level for better accuracy
+    // At zoom 15, 0.0001 degrees ≈ 11 meters ≈ ~20 pixels
+    // We'll use a base threshold and adjust if needed
+    const baseThreshold = 0.00015 // Slightly larger for better usability
+    let threshold = baseThreshold
+    
+    // Optionally adjust based on zoom level (if map is available)
+    if (map.current) {
+      const zoom = map.current.getZoom()
+      // At higher zoom, we can use smaller threshold
+      // At lower zoom, use larger threshold
+      threshold = baseThreshold * Math.pow(1.2, 15 - zoom)
+    }
+
+    const clickPoint = [clickLng, clickLat]
+    
+    // Check distance to each existing marker coordinate
+    for (let i = 0; i < coords.length; i++) {
+      const [lng, lat] = coords[i]
+      const dx = clickPoint[0] - lng
+      const dy = clickPoint[1] - lat
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      
+      if (distance < threshold) {
+        return true // Click is too close to an existing marker
+      }
+    }
+    
+    return false
+  }
+
+  // Helper function to find which segment index was clicked and return the closest point on that segment
+  // Returns [segmentIndex, pointOnSegment] or [-1, null] if no valid segment found
+  const findClickedSegmentIndex = (clickLng, clickLat) => {
+    const coords = drawingCoordinatesRef.current
+    if (coords.length < 2) return [-1, null]
+
+    const clickPoint = [clickLng, clickLat]
+    let closestSegmentIndex = -1
+    let closestPointOnSegment = null
+    let minDistance = Infinity
+
+    // Find the closest segment to the click point
+    for (let i = 0; i < coords.length - 1; i++) {
+      const segmentStart = coords[i]
+      const segmentEnd = coords[i + 1]
+      
+      // Find closest point on this segment
+      const pointOnSegment = findClosestPointOnSegment(clickPoint, segmentStart, segmentEnd)
+      
+      // Calculate distance from click to point on segment
+      const dx = clickPoint[0] - pointOnSegment[0]
+      const dy = clickPoint[1] - pointOnSegment[1]
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      
+      if (distance < minDistance) {
+        minDistance = distance
+        closestSegmentIndex = i
+        closestPointOnSegment = pointOnSegment
+      }
+    }
+
+    // Only return segment index if click is close enough to the line
+    if (minDistance < 0.01) {
+      return [closestSegmentIndex, closestPointOnSegment]
+    }
+    
+    return [-1, null]
+  }
+
+  // Helper function to insert point at clicked location on a specific segment
+  // pointOnSegment is the exact point on the segment where the click occurred (already calculated)
+  const insertPointOnLine = (segmentIndex, pointOnSegment) => {
+    const coords = drawingCoordinatesRef.current
+    if (coords.length < 2) return
+    if (segmentIndex < 0 || segmentIndex >= coords.length - 1) return
+    if (!pointOnSegment || !Array.isArray(pointOnSegment)) return
+
+    // First check if click is near an existing marker - if so, don't insert
+    // This allows the marker to handle drag-drop instead
+    const [clickLng, clickLat] = pointOnSegment
+    if (isClickNearMarker(clickLng, clickLat)) {
+      console.log('Click too close to existing marker, skipping insertion')
+      return
+    }
+    
+    // Insert point at segmentIndex + 1 (after the start point of the segment)
+    const insertIndex = segmentIndex + 1
+    const newCoords = [...coords]
+    newCoords.splice(insertIndex, 0, pointOnSegment)
+    
+    drawingCoordinatesRef.current = newCoords
+    setDrawingCoordinates(newCoords)
+    
+    // Update the line
+    drawTemporaryLine(newCoords)
+    // Re-setup interactivity after updating line
+    setTimeout(() => {
+      setupLineInteractivity()
+    }, 50)
+    
+    // Create marker for new point using the exact point on segment
+    const [lng, lat] = pointOnSegment
+    const marker = createDrawingMarker(lng, lat)
+    
+    // Insert marker at correct position
+    drawingMarkersRef.current.splice(insertIndex, 0, marker)
+    
+    // Recalculate length
+    updateLengthFromCoordinates(newCoords)
+  }
+
+  // Setup interactive handlers for line layer (for inserting points)
+  const setupLineInteractivity = () => {
+    if (!map.current || !mapContainer.current) return
+    
+    const tempLayerId = 'temp-drawing-layer'
+    if (!map.current.getLayer(tempLayerId)) return
+
+    // Remove existing handlers if any
+    map.current.off('mousemove', tempLayerId)
+    map.current.off('mouseleave', tempLayerId)
+    map.current.off('click', tempLayerId)
+
+    // Only setup if in editing mode
+    if (isDrawingRef.current && editingStreetRef.current) {
+      // Setup hover handler
+      map.current.on('mousemove', tempLayerId, (e) => {
+        if (isDrawingRef.current && editingStreetRef.current && mapContainer.current) {
+          const { lng, lat } = e.lngLat
+          
+          // Don't show tooltip or change cursor if mouse is near a marker
+          // Let the marker element handle its own cursor and drag behavior
+          if (isClickNearMarker(lng, lat)) {
+            // Reset cursor to default - let the marker handle it
+            map.current.getCanvas().style.cursor = ''
+            setLineTooltip({ show: false, x: 0, y: 0 })
+          } else {
+            map.current.getCanvas().style.cursor = 'crosshair'
+            setLineTooltip({
+              show: true,
+              x: e.point.x,
+              y: e.point.y
+            })
+          }
+        }
+      })
+
+      map.current.on('mouseleave', tempLayerId, () => {
+        if (map.current) {
+          map.current.getCanvas().style.cursor = ''
+        }
+        setLineTooltip({ show: false, x: 0, y: 0 })
+      })
+
+      // No click handler needed here - clicks are handled by the main map click handler
+      // The line layer handler is only for hover tooltip (mousemove/mouseleave)
     }
   }
 
@@ -965,6 +1381,9 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
         }
       })
     }
+
+    // Setup interactivity after layer is created or updated
+    setupLineInteractivity()
   }
 
   const startDrawing = () => {
@@ -977,16 +1396,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     setEditingStreet(null)
     
     // Clean up any existing temporary drawing layers
-    if (map.current) {
-      const tempSourceId = 'temp-drawing-line'
-      const tempLayerId = 'temp-drawing-layer'
-      if (map.current.getLayer(tempLayerId)) {
-        map.current.removeLayer(tempLayerId)
-      }
-      if (map.current.getSource(tempSourceId)) {
-        map.current.removeSource(tempSourceId)
-      }
-    }
+    clearTempDrawingLayer()
   }
 
   const cancelDrawing = () => {
@@ -997,17 +1407,14 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
     setDrawingCoordinates([])
     clearMarkers()
     clearTempPropertyMarker()
+    setLineTooltip({ show: false, x: 0, y: 0 })
 
     // Remove temporary drawing layer
-    if (map.current) {
-      const tempSourceId = 'temp-drawing-line'
-      const tempLayerId = 'temp-drawing-layer'
-      if (map.current.getLayer(tempLayerId)) {
-        map.current.removeLayer(tempLayerId)
-      }
-      if (map.current.getSource(tempSourceId)) {
-        map.current.removeSource(tempSourceId)
-      }
+    clearTempDrawingLayer()
+    
+    // Reset cursor
+    if (map.current && map.current.getCanvas()) {
+      map.current.getCanvas().style.cursor = ''
     }
 
     // Notify parent to cancel creation
@@ -1027,14 +1434,8 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
 
     // If creating new street, show name input dialog
     if (isCreating) {
-      // Calculate length
-      let length = 0
-      for (let i = 1; i < coords.length; i++) {
-        const [lng1, lat1] = coords[i - 1]
-        const [lng2, lat2] = coords[i]
-        length += calculateDistance(lat1, lng1, lat2, lng2)
-      }
-      const roundedLength = Math.round(length * 100) / 100
+      // Calculate length using helper function
+      const roundedLength = calculatedLengthFromCoords(coords)
 
       // Store the street data and show dialog
       setPendingStreetData({
@@ -1128,8 +1529,17 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       alert('Please select a street first')
       return
     }
+    
     console.log('Starting to edit street:', selectedStreet.name)
-    const coords = selectedStreet.geometry.coordinates.map(coord => [coord[0], coord[1]])
+    // Use coordinates DIRECTLY from geometry - don't map them
+    // Backend returns [longitude, latitude] which is correct for Mapbox
+    const coords = [...selectedStreet.geometry.coordinates]
+    
+    console.log('Street coordinates:', coords.length)
+    if (coords.length > 0) {
+      console.log('First coord:', coords[0], 'Last coord:', coords[coords.length - 1])
+    }
+    
     isDrawingRef.current = true
     drawingCoordinatesRef.current = coords
     setEditingStreet(selectedStreet)
@@ -1153,80 +1563,25 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
       }
     }
 
+    // IMPORTANT: Draw the line FIRST so markers use the exact same coordinates
+    if (coords.length > 1) {
+      drawTemporaryLine(coords)
+    }
+
     // Add markers for existing points (draggable for editing)
+    // Use the EXACT same coordinates array that was used for the line above
     coords.forEach((coord, index) => {
+      // Coordinates are already in [lng, lat] format from backend
       const [lng, lat] = coord
-      const el = document.createElement('div')
-      el.className = 'drawing-marker'
-      el.title = 'Drag to adjust • Right-click to remove'
-      el.style.cursor = 'grab'
-      
-      const marker = new mapboxgl.Marker({ 
-        element: el,
-        draggable: true 
-      }).setLngLat([lng, lat]).addTo(map.current)
-      
-      // Handle drag events
-      marker.on('dragstart', () => {
-        el.style.cursor = 'grabbing'
-      })
-      
-      marker.on('dragend', () => {
-        el.style.cursor = 'grab'
-        const newLngLat = marker.getLngLat()
-        const currentCoords = drawingCoordinatesRef.current
-        
-        // Find marker's current index in the array (always in sync with coordinates)
-        const markerIndex = drawingMarkersRef.current.indexOf(marker)
-        
-        if (markerIndex !== -1 && markerIndex < currentCoords.length) {
-          const newCoords = [...currentCoords]
-          newCoords[markerIndex] = [newLngLat.lng, newLngLat.lat]
-          
-          drawingCoordinatesRef.current = newCoords
-          setDrawingCoordinates(newCoords)
-          
-          // Update the line
-          if (newCoords.length > 1) {
-            drawTemporaryLine(newCoords)
-          }
-          
-          // Recalculate and update length
-          updateLengthFromCoordinates(newCoords)
-          
-          console.log('Point moved to:', { lng: newLngLat.lng, lat: newLngLat.lat, index: markerIndex })
-        } else {
-          console.warn('Could not find marker index for drag update', { markerIndex, coordsLength: currentCoords.length })
-        }
-      })
-      
-      // Handle right-click to remove - find index dynamically
-      el.addEventListener('contextmenu', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        
-        // Find marker index in array
-        const markerArrayIndex = drawingMarkersRef.current.indexOf(marker)
-        if (markerArrayIndex !== -1) {
-          removePointAtIndex(markerArrayIndex)
-        }
-      })
-      
-      // Handle drag start/end - change cursor
-      marker.on('dragstart', () => {
-        el.style.cursor = 'grabbing'
-      })
-      
-      marker.on('dragend', () => {
-        el.style.cursor = 'grab'
-      })
-      
+      const marker = createDrawingMarker(lng, lat)
       drawingMarkersRef.current.push(marker)
     })
 
-    // Draw the existing path
+    // Setup interactivity after a short delay to ensure layer is ready
     if (coords.length > 1) {
-      drawTemporaryLine(coords)
+      setTimeout(() => {
+        setupLineInteractivity()
+      }, 100)
     }
     
     // Calculate initial length when starting to edit
@@ -1259,17 +1614,8 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
 
     // Calculate new length
     const length = calculatedLengthFromCoords(coords)
-
-    const nodes = coords.map((coord, index) => ({
-      latitude: coord[1],
-      longitude: coord[0],
-      sequence: index
-    }))
-
-    const geometry = {
-      type: 'LineString',
-      coordinates: coords
-    }
+    const nodes = coordinatesToNodes(coords)
+    const geometry = createGeometry(coords)
 
     try {
       const response = await axios.put(`${API_URL}/streets/${editingStreet.id}`, {
@@ -1281,8 +1627,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
 
       if (response.status === 200) {
         console.log('Street updated successfully')
-        isDrawingRef.current = false
-        drawingCoordinatesRef.current = []
+        resetDrawingState()
         cancelDrawing()
         setEditingStreet(null)
         
@@ -1299,8 +1644,49 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
   }
 
   return (
-    <div className="map-editor">
+    <div className="map-editor" style={{ position: 'relative' }}>
+      {/* Tip for editing mode - displayed at top */}
+      {isDrawing && !isCreating && editingStreet && (
+        <div className="editing-tip">
+          💡 <strong>Tip:</strong> Click map to extend street from either end (closer to start adds to beginning, closer to end adds to end) • <strong>Drag points</strong> to adjust curves • Right-click point to remove
+        </div>
+      )}
+      {/* Tip for creating mode - displayed at top */}
+      {isDrawing && isCreating && (
+        <div className="editing-tip">
+          💡 <strong>Tip:</strong> Click map to add points • <strong>Drag points</strong> to adjust curves • Right-click point to remove
+        </div>
+      )}
+      {/* Tip for property adding mode - displayed at top */}
+      {isAddingProperty && (
+        <div className="editing-tip">
+          💡 <strong>Click on the map</strong> to place a property marker
+        </div>
+      )}
       <div ref={mapContainer} className="map-container" />
+      
+      {/* Tooltip for line segment hover */}
+      {lineTooltip.show && (
+        <div
+          className="line-tooltip"
+          style={{
+            position: 'absolute',
+            left: `${lineTooltip.x + 10}px`,
+            top: `${lineTooltip.y - 10}px`,
+            pointerEvents: 'none',
+            zIndex: 1000,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '6px 10px',
+            borderRadius: '4px',
+            fontSize: '0.875rem',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          }}
+        >
+          Click to insert point
+        </div>
+      )}
       
       <div className="map-controls">
         {/* Map Style Toggle - Always visible */}
@@ -1333,9 +1719,6 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
           </>
         ) : isAddingProperty ? (
           <>
-            <div className="drawing-hint" style={{ background: '#fff3cd', color: '#856404', padding: '0.5rem 1rem', borderRadius: '4px', marginTop: '0.5rem' }}>
-              💡 <strong>Click on the map</strong> to place a property marker
-            </div>
             <button className="map-control-btn map-control-btn-danger" onClick={() => {
               if (onCancelAddingProperty) {
                 onCancelAddingProperty()
@@ -1362,9 +1745,6 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
                 <button className="map-control-btn map-control-btn-danger" onClick={cancelDrawing}>
                   ✗ Cancel
                 </button>
-                <div className="drawing-hint">
-                  💡 <strong>Tip:</strong> Click map to add points • <strong>Drag points</strong> to adjust curves • Right-click point to remove
-                </div>
               </>
             ) : (
               <>
@@ -1382,9 +1762,6 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
                 <button className="map-control-btn map-control-btn-danger" onClick={cancelDrawing}>
                   ✗ Cancel
                 </button>
-                <div className="drawing-hint">
-                  💡 <strong>Tip:</strong> Click map to extend street from either end (closer to start adds to beginning, closer to end adds to end) • <strong>Drag points</strong> to adjust curves • Right-click point to remove
-                </div>
               </>
             )}
           </>
@@ -1398,17 +1775,9 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
         onConfirm={async (streetName) => {
           if (!pendingStreetData) return
 
-          // Create nodes from coordinates
-          const nodes = pendingStreetData.coordinates.map((coord, index) => ({
-            latitude: coord[1],
-            longitude: coord[0],
-            sequence: index
-          }))
-
-          const geometry = {
-            type: 'LineString',
-            coordinates: pendingStreetData.coordinates
-          }
+          // Create nodes and geometry from coordinates
+          const nodes = coordinatesToNodes(pendingStreetData.coordinates)
+          const geometry = createGeometry(pendingStreetData.coordinates)
 
           // Save the street
           try {
@@ -1422,11 +1791,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
             if (response.status === 201) {
               console.log('Street created successfully')
               // Reset drawing state
-              isDrawingRef.current = false
-              drawingCoordinatesRef.current = []
-              setIsDrawing(false)
-              setDrawingCoordinates([])
-              clearMarkers()
+              resetDrawingState()
               
               // Close dialog and reset pending data
               setShowNameDialog(false)
@@ -1436,16 +1801,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetUpdate, is
               onStreetUpdate()
               
               // Clean up temporary drawing layer
-              if (map.current) {
-                const tempSourceId = 'temp-drawing-line'
-                const tempLayerId = 'temp-drawing-layer'
-                if (map.current.getLayer(tempLayerId)) {
-                  map.current.removeLayer(tempLayerId)
-                }
-                if (map.current.getSource(tempSourceId)) {
-                  map.current.removeSource(tempSourceId)
-                }
-              }
+              clearTempDrawingLayer()
             } else {
               alert('Failed to create street')
               setShowNameDialog(false)
