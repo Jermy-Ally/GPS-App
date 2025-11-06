@@ -25,12 +25,12 @@
 
 .property-item:hover {
   background: #f0f0f0;
-  border-color: #007bff;
+  border-color: #facc15;
 }
 
 .property-item.selected {
-  background: #e3f2fd;
-  border-color: #2196f3;
+  background: #fef3c7;
+  border-color: #facc15;
 }
 
 .property-info {

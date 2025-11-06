@@ -241,7 +241,7 @@ function AttributeTable({
                   filteredAndSortedProperties.map(property => (
                     <tr
                       key={property.id}
-                      className={selectedProperty?.id === property.id ? 'selected' : ''}
+                      className={selectedProperty?.id === property.id ? 'selected property-selected' : ''}
                       onClick={() => handleRowClick(property, 'property')}
                     >
                       <td>{property.id}</td>

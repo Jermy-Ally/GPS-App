@@ -50,10 +50,25 @@ function App() {
     }
   }
 
+  const clearPropertySelection = () => {
+    setSelectedProperty(null)
+    setIsAddingProperty(false)
+    setIsEditingProperty(false)
+    setPropertyCoordinates(null)
+  }
+
+  const clearStreetSelection = () => {
+    setSelectedStreet(null)
+    setIsEditing(false)
+    setIsCreating(false)
+    setCalculatedLength(0)
+  }
+
   const handleStreetSelect = (street) => {
     setSelectedStreet(street)
     setIsEditing(false)
     setIsCreating(false)
+    clearPropertySelection()
   }
 
   const handleStreetEdit = (street) => {
@@ -61,12 +76,14 @@ function App() {
     setIsEditing(true)
     setIsCreating(false)
     setCalculatedLength(street.length || 0) // Initialize with current length
+    clearPropertySelection()
   }
 
   const handleCreateNew = () => {
     setSelectedStreet(null)
     setIsEditing(false)
     setIsCreating(true)
+    clearPropertySelection()
     // Just start drawing - the map editor will handle everything in one flow
   }
 
@@ -163,14 +180,15 @@ function App() {
       setIsEditingProperty(false)
       setPropertyCoordinates(null)
       console.log('Property selected, isAddingProperty set to false')
+      clearStreetSelection()
     }
   }
 
   const handleAddProperty = () => {
-    setSelectedProperty(null)
+    clearStreetSelection()
+    clearPropertySelection()
     setIsAddingProperty(true)
     setIsEditingProperty(true)
-    setPropertyCoordinates(null)
   }
 
   const handlePropertyClick = (propertyOrCoords) => {
@@ -194,6 +212,7 @@ function App() {
       setPropertyCoordinates(coords)
       setIsEditingProperty(true)
       setIsAddingProperty(true)
+      clearStreetSelection()
       
       console.log('State updated - coordinates should be:', coords)
     } else if (propertyOrCoords && propertyOrCoords.id) {
@@ -202,6 +221,7 @@ function App() {
       setIsEditingProperty(true)
       setIsAddingProperty(false)
       setPropertyCoordinates(null)
+      clearStreetSelection()
     } else {
       console.warn('handlePropertyClick: Unrecognized propertyOrCoords format:', propertyOrCoords)
     }
@@ -212,6 +232,23 @@ function App() {
     setIsEditingProperty(true)
     setIsAddingProperty(false)
     setPropertyCoordinates({ lng: property.longitude, lat: property.latitude })
+    clearStreetSelection()
+  }
+
+  const handlePropertyPositionUpdate = (updatedProperty) => {
+    if (!updatedProperty || !updatedProperty.id) {
+      return
+    }
+
+    setProperties(prevProperties =>
+      prevProperties.map(p =>
+        p.id === updatedProperty.id ? updatedProperty : p
+      )
+    )
+
+    setSelectedProperty(prev =>
+      prev && prev.id === updatedProperty.id ? updatedProperty : prev
+    )
   }
 
   const handlePropertySaved = () => {
@@ -365,6 +402,7 @@ function App() {
               setSelectedStreet(street)
               setIsEditing(true)
               setCalculatedLength(street.length || 0)
+              clearPropertySelection()
             }}
             onDrawingCancel={() => {
               setIsCreating(false)
@@ -382,6 +420,7 @@ function App() {
             isAddingProperty={isAddingProperty}
             onPropertyClick={handlePropertyClick}
             selectedProperty={selectedProperty}
+            onPropertyUpdate={handlePropertyPositionUpdate}
             onCancelAddingProperty={handleCancelAddingProperty}
             referenceCodes={referenceCodes}
             showReferenceCodes={showReferenceCodes}

@@ -13,8 +13,7 @@ admin-panel/dist/
 admin-panel/build/
 
 # Data files
-data/
-*.json
+data/*.json
 
 # Logs
 *.log

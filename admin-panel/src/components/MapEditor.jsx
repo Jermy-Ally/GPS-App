@@ -14,7 +14,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HER
 const DEFAULT_CENTER = [21.4102312, -5.355093] // [longitude, latitude] - Note: Mapbox uses [lng, lat] format
 const DEFAULT_ZOOM = 15 // Increased zoom for better visibility
 
-function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onStreetUpdate, isCreating, isEditing, onDrawingCancel, onLengthChange, onGetCurrentCoordinates, onStartEditing, properties, isAddingProperty, onPropertyClick, selectedProperty, onCancelAddingProperty, referenceCodes = [], showReferenceCodes = true, onToggleReferenceCodes }) {
+function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onStreetUpdate, isCreating, isEditing, onDrawingCancel, onLengthChange, onGetCurrentCoordinates, onStartEditing, properties, isAddingProperty, onPropertyClick, selectedProperty, onPropertyUpdate, onCancelAddingProperty, referenceCodes = [], showReferenceCodes = true, onToggleReferenceCodes }) {
   const mapContainer = useRef(null)
   const map = useRef(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -547,7 +547,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
         icon.style.width = '12px'
         icon.style.height = '12px'
         icon.style.borderRadius = '50%'
-        icon.style.backgroundColor = isSelected ? '#2196f3' : '#ff6b6b'
+        icon.style.backgroundColor = isSelected ? '#facc15' : '#ff6b6b'
         icon.style.border = '2px solid white'
         icon.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)'
         icon.style.position = 'relative'
@@ -565,7 +565,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
             height: 0;
             border-left: 4px solid transparent;
             border-right: 4px solid transparent;
-            border-top: 4px solid ${isSelected ? '#2196f3' : '#ff6b6b'};
+            border-top: 4px solid ${isSelected ? '#facc15' : '#ff6b6b'};
           "></div>
         `
         
@@ -841,8 +841,13 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
         
         if (response.status === 200) {
           console.log('Property coordinates updated:', { lng: newLngLat.lng, lat: newLngLat.lat })
-          // Keep the dragged position ref indefinitely - it will be cleared when properties refresh naturally
-          // (e.g., when user creates/edits another property, or on page refresh)
+          if (onPropertyUpdate) {
+            onPropertyUpdate({
+              ...property,
+              latitude: newLngLat.lat,
+              longitude: newLngLat.lng
+            })
+          }
         } else {
           console.error('Failed to update property coordinates')
           draggedPropertyPositionRef.current = null
