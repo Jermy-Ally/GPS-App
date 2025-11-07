@@ -1,361 +1,417 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('fs')
+const path = require('path')
+const Database = require('better-sqlite3')
 
-const dbPath = path.join(__dirname, '..', '..', 'data', 'streets.json');
+const dataDir = path.join(__dirname, '..', '..', 'data')
+const dbFile = path.join(dataDir, 'streets.db')
+const legacyJsonPath = path.join(dataDir, 'streets.json')
 
-let data = null;
+let dbInstance = null
+let api = null
 
-function init() {
-  const dataDir = path.dirname(dbPath);
-  
-  // Create data directory if it doesn't exist
+function ensureDataDirectory() {
   if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true })
   }
-
-  // Load or create database file
-  if (fs.existsSync(dbPath)) {
-    try {
-      const fileData = fs.readFileSync(dbPath, 'utf8');
-      data = JSON.parse(fileData);
-    } catch (error) {
-      console.error('Error reading database file:', error);
-      data = { streets: [], nodes: [], nextStreetId: 1 };
-    }
-  } else {
-    data = { streets: [], nodes: [], properties: [], referenceCodes: [], nextStreetId: 1, nextPropertyId: 1, nextReferenceCodeId: 1 };
-    save();
-  }
-
-  // Ensure properties array exists (for backward compatibility)
-  if (!data.properties) {
-    data.properties = [];
-  }
-  if (!data.nextPropertyId) {
-    data.nextPropertyId = 1;
-  }
-  // Ensure referenceCodes array exists (migrate from old referencePoints if needed)
-  if (!data.referenceCodes) {
-    if (data.referencePoints) {
-      // Migrate old referencePoints to referenceCodes
-      data.referenceCodes = data.referencePoints;
-      delete data.referencePoints;
-    } else {
-      data.referenceCodes = [];
-    }
-  }
-  if (!data.nextReferenceCodeId) {
-    // Find max ID from existing reference codes
-    const maxId = data.referenceCodes.length > 0 
-      ? Math.max(...data.referenceCodes.map(rc => rc.id || 0))
-      : 0;
-    data.nextReferenceCodeId = maxId + 1;
-  }
-
-  console.log('Database initialized successfully');
-  return { streets: data.streets, nodes: data.nodes, properties: data.properties };
 }
 
-function save() {
+function createTables() {
+  dbInstance.exec(`
+    CREATE TABLE IF NOT EXISTS streets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      length REAL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS street_nodes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      street_id INTEGER NOT NULL REFERENCES streets(id) ON DELETE CASCADE,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      sequence INTEGER NOT NULL,
+      UNIQUE(street_id, sequence)
+    );
+
+    CREATE TABLE IF NOT EXISTS properties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      number TEXT,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      street_id INTEGER REFERENCES streets(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS reference_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL,
+      street_id INTEGER NOT NULL REFERENCES streets(id) ON DELETE CASCADE,
+      street_name TEXT,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      distance_from_start REAL,
+      sequence INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_street_nodes_street ON street_nodes(street_id, sequence);
+    CREATE INDEX IF NOT EXISTS idx_properties_street ON properties(street_id);
+    CREATE INDEX IF NOT EXISTS idx_reference_codes_street ON reference_codes(street_id, sequence);
+  `)
+}
+
+function maybeMigrateLegacyJson() {
+  if (!fs.existsSync(legacyJsonPath)) {
+    return
+  }
+
+  const streetCount = dbInstance.prepare('SELECT COUNT(1) AS count FROM streets').get().count
+  if (streetCount > 0) {
+    return
+  }
+
   try {
-    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf8');
+    const fileData = fs.readFileSync(legacyJsonPath, 'utf8')
+    const legacy = JSON.parse(fileData)
+
+    if (!legacy || !Array.isArray(legacy.streets)) {
+      return
+    }
+
+    const insertLegacyData = dbInstance.transaction(() => {
+      const insertStreet = dbInstance.prepare(
+        'INSERT INTO streets (id, name, length, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+      )
+      const insertNode = dbInstance.prepare(
+        'INSERT INTO street_nodes (street_id, latitude, longitude, sequence) VALUES (?, ?, ?, ?)'
+      )
+      const insertProperty = dbInstance.prepare(
+        'INSERT INTO properties (id, number, latitude, longitude, street_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      const insertReference = dbInstance.prepare(
+        'INSERT INTO reference_codes (id, code, street_id, street_name, latitude, longitude, distance_from_start, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+
+      const streets = legacy.streets || []
+      const nodes = legacy.nodes || []
+      const properties = legacy.properties || []
+      const referenceCodes = legacy.referenceCodes || []
+
+      streets.forEach(street => {
+        const createdAt = street.created_at || new Date().toISOString()
+        const updatedAt = street.updated_at || createdAt
+        insertStreet.run(street.id, street.name || 'Unnamed Street', street.length || 0, createdAt, updatedAt)
+      })
+
+      nodes.forEach(node => {
+        insertNode.run(node.street_id, node.latitude, node.longitude, node.sequence || 0)
+      })
+
+      properties.forEach(property => {
+        const createdAt = property.created_at || new Date().toISOString()
+        const updatedAt = property.updated_at || createdAt
+        insertProperty.run(
+          property.id,
+          property.number || null,
+          property.latitude,
+          property.longitude,
+          property.street_id || null,
+          createdAt,
+          updatedAt
+        )
+      })
+
+      referenceCodes.forEach(referenceCode => {
+        const createdAt = referenceCode.created_at || new Date().toISOString()
+        insertReference.run(
+          referenceCode.id,
+          referenceCode.code,
+          referenceCode.street_id,
+          referenceCode.street_name || null,
+          referenceCode.latitude,
+          referenceCode.longitude,
+          referenceCode.distance_from_start || 0,
+          referenceCode.sequence || 0,
+          createdAt
+        )
+      })
+    })
+
+    insertLegacyData()
+    console.log('Migrated legacy streets.json data into SQLite database')
   } catch (error) {
-    console.error('Error saving database:', error);
-    throw error;
+    console.error('Failed to migrate legacy JSON data:', error)
+  }
+}
+
+function init() {
+  if (dbInstance) {
+    return getDb()
+  }
+
+  ensureDataDirectory()
+  dbInstance = new Database(dbFile)
+  dbInstance.pragma('foreign_keys = ON')
+  dbInstance.pragma('journal_mode = WAL')
+
+  createTables()
+  maybeMigrateLegacyJson()
+
+  console.log(`SQLite database initialized at ${dbFile}`)
+  return getDb()
+}
+
+function mapStreetRow(row) {
+  const nodeStmt = dbInstance.prepare(
+    'SELECT id, street_id, latitude, longitude, sequence FROM street_nodes WHERE street_id = ? ORDER BY sequence'
+  )
+  const nodes = nodeStmt.all(row.id)
+
+  return {
+    ...row,
+    nodes,
+    geometry: {
+      type: 'LineString',
+      coordinates: nodes.map(node => [node.longitude, node.latitude])
+    }
   }
 }
 
 function getAllStreets() {
-  if (!data) init();
-  return data.streets.map(street => {
-    const nodes = data.nodes
-      .filter(node => node.street_id === street.id)
-      .sort((a, b) => a.sequence - b.sequence);
-    
-    const geometry = {
-      type: 'LineString',
-      coordinates: nodes.map(node => [node.longitude, node.latitude])
-    };
-
-    return {
-      ...street,
-      geometry,
-      nodes
-    };
-  });
+  const streets = dbInstance.prepare('SELECT * FROM streets ORDER BY id').all()
+  return streets.map(mapStreetRow)
 }
 
 function getStreetById(id) {
-  if (!data) init();
-  const street = data.streets.find(s => s.id === id);
-  if (!street) return null;
-
-  const nodes = data.nodes
-    .filter(node => node.street_id === id)
-    .sort((a, b) => a.sequence - b.sequence);
-
-  const geometry = {
-    type: 'LineString',
-    coordinates: nodes.map(node => [node.longitude, node.latitude])
-  };
-
-  return {
-    ...street,
-    geometry,
-    nodes
-  };
+  const street = dbInstance.prepare('SELECT * FROM streets WHERE id = ?').get(id)
+  if (!street) {
+    return null
+  }
+  return mapStreetRow(street)
 }
 
 function createStreet(streetData) {
-  if (!data) init();
-  
-  const street = {
-    id: data.nextStreetId++,
-    name: streetData.name,
-    length: streetData.length || 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
+  const { name, length = 0, nodes = [] } = streetData
+  const now = new Date().toISOString()
 
-  data.streets.push(street);
+  const insertStreet = dbInstance.prepare(
+    'INSERT INTO streets (name, length, created_at, updated_at) VALUES (?, ?, ?, ?)'
+  )
+  const insertNode = dbInstance.prepare(
+    'INSERT INTO street_nodes (street_id, latitude, longitude, sequence) VALUES (?, ?, ?, ?)'
+  )
 
-  // Add nodes
-  if (streetData.nodes && streetData.nodes.length > 0) {
-    streetData.nodes.forEach((nodeData, index) => {
-      const node = {
-        id: data.nodes.length + 1,
-        street_id: street.id,
-        latitude: nodeData.latitude,
-        longitude: nodeData.longitude,
-        sequence: index
-      };
-      data.nodes.push(node);
-    });
-  }
+  const create = dbInstance.transaction(() => {
+    const info = insertStreet.run(name, length, now, now)
+    const streetId = info.lastInsertRowid
 
-  save();
-  return street.id;
+    nodes.forEach((node, index) => {
+      insertNode.run(streetId, node.latitude, node.longitude, index)
+    })
+
+    return streetId
+  })
+
+  return create()
 }
 
 function updateStreet(id, streetData) {
-  if (!data) init();
-  
-  const streetIndex = data.streets.findIndex(s => s.id === id);
-  if (streetIndex === -1) return false;
-
-  data.streets[streetIndex] = {
-    ...data.streets[streetIndex],
-    name: streetData.name,
-    length: streetData.length || 0,
-    updated_at: new Date().toISOString()
-  };
-
-  // Remove old nodes
-  data.nodes = data.nodes.filter(node => node.street_id !== id);
-
-  // Add new nodes
-  if (streetData.nodes && streetData.nodes.length > 0) {
-    streetData.nodes.forEach((nodeData, index) => {
-      const node = {
-        id: data.nodes.length > 0 ? Math.max(...data.nodes.map(n => n.id)) + 1 : 1,
-        street_id: id,
-        latitude: nodeData.latitude,
-        longitude: nodeData.longitude,
-        sequence: index
-      };
-      data.nodes.push(node);
-    });
+  const existing = dbInstance.prepare('SELECT id FROM streets WHERE id = ?').get(id)
+  if (!existing) {
+    return false
   }
 
-  save();
-  return true;
+  const { name, length = 0, nodes = [] } = streetData
+  const now = new Date().toISOString()
+
+  const update = dbInstance.transaction(() => {
+    dbInstance.prepare('UPDATE streets SET name = ?, length = ?, updated_at = ? WHERE id = ?')
+      .run(name, length, now, id)
+
+    dbInstance.prepare('DELETE FROM street_nodes WHERE street_id = ?').run(id)
+
+    const insertNode = dbInstance.prepare(
+      'INSERT INTO street_nodes (street_id, latitude, longitude, sequence) VALUES (?, ?, ?, ?)'
+    )
+
+    nodes.forEach((node, index) => {
+      insertNode.run(id, node.latitude, node.longitude, index)
+    })
+  })
+
+  update()
+  return true
 }
 
 function deleteStreet(id) {
-  if (!data) init();
-  
-  const streetIndex = data.streets.findIndex(s => s.id === id);
-  if (streetIndex === -1) return false;
-
-  data.streets.splice(streetIndex, 1);
-  data.nodes = data.nodes.filter(node => node.street_id !== id);
-  // Also remove properties and reference codes associated with this street
-  data.properties = data.properties.filter(prop => prop.street_id !== id);
-  data.referenceCodes = (data.referenceCodes || []).filter(rc => rc.street_id !== id);
-
-  save();
-  return true;
+  const result = dbInstance.prepare('DELETE FROM streets WHERE id = ?').run(id)
+  return result.changes > 0
 }
 
-// Property functions
 function getAllProperties() {
-  if (!data) init();
-  return data.properties || [];
+  return dbInstance.prepare('SELECT * FROM properties ORDER BY id').all()
 }
 
 function getPropertyById(id) {
-  if (!data) init();
-  return data.properties.find(p => p.id === id) || null;
+  return dbInstance.prepare('SELECT * FROM properties WHERE id = ?').get(id) || null
 }
 
 function getPropertiesByStreetId(streetId) {
-  if (!data) init();
-  return data.properties.filter(p => p.street_id === streetId) || [];
+  return dbInstance.prepare('SELECT * FROM properties WHERE street_id = ? ORDER BY id').all(streetId)
 }
 
 function createProperty(propertyData) {
-  if (!data) init();
-  
-  const property = {
-    id: data.nextPropertyId++,
-    number: propertyData.number,
-    latitude: propertyData.latitude,
-    longitude: propertyData.longitude,
-    street_id: propertyData.street_id || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
+  const now = new Date().toISOString()
+  const stmt = dbInstance.prepare(
+    'INSERT INTO properties (number, latitude, longitude, street_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
 
-  data.properties.push(property);
-  save();
-  return property.id;
+  const info = stmt.run(
+    propertyData.number || null,
+    propertyData.latitude,
+    propertyData.longitude,
+    propertyData.street_id || null,
+    now,
+    now
+  )
+
+  return info.lastInsertRowid
 }
 
 function updateProperty(id, propertyData) {
-  if (!data) init();
-  
-  const propertyIndex = data.properties.findIndex(p => p.id === id);
-  if (propertyIndex === -1) return false;
+  const existing = getPropertyById(id)
+  if (!existing) {
+    return false
+  }
 
-  data.properties[propertyIndex] = {
-    ...data.properties[propertyIndex],
-    number: propertyData.number,
-    latitude: propertyData.latitude,
-    longitude: propertyData.longitude,
-    street_id: propertyData.street_id !== undefined ? propertyData.street_id : data.properties[propertyIndex].street_id,
-    updated_at: new Date().toISOString()
-  };
+  const now = new Date().toISOString()
+  const streetId = propertyData.street_id !== undefined ? propertyData.street_id : existing.street_id
 
-  save();
-  return true;
+  const result = dbInstance.prepare(
+    'UPDATE properties SET number = ?, latitude = ?, longitude = ?, street_id = ?, updated_at = ? WHERE id = ?'
+  ).run(
+    propertyData.number,
+    propertyData.latitude,
+    propertyData.longitude,
+    streetId,
+    now,
+    id
+  )
+
+  return result.changes > 0
 }
 
 function deleteProperty(id) {
-  if (!data) init();
-  
-  const propertyIndex = data.properties.findIndex(p => p.id === id);
-  if (propertyIndex === -1) return false;
-
-  data.properties.splice(propertyIndex, 1);
-  save();
-  return true;
+  const result = dbInstance.prepare('DELETE FROM properties WHERE id = ?').run(id)
+  return result.changes > 0
 }
 
-// Reference Code functions
 function getAllReferenceCodes() {
-  if (!data) init();
-  return data.referenceCodes || [];
+  return dbInstance.prepare('SELECT * FROM reference_codes ORDER BY street_id, sequence').all()
 }
 
 function getReferenceCodeById(id) {
-  if (!data) init();
-  return data.referenceCodes.find(rc => rc.id === id) || null;
+  return dbInstance.prepare('SELECT * FROM reference_codes WHERE id = ?').get(id) || null
 }
 
 function getReferenceCodesByStreetId(streetId) {
-  if (!data) init();
-  return (data.referenceCodes || []).filter(rc => rc.street_id === streetId).sort((a, b) => a.sequence - b.sequence);
+  return dbInstance.prepare('SELECT * FROM reference_codes WHERE street_id = ? ORDER BY sequence').all(streetId)
 }
 
 function createReferenceCode(referenceCodeData) {
-  if (!data) init();
-  
-  const referenceCode = {
-    id: data.nextReferenceCodeId++,
-    code: referenceCodeData.code,
-    street_id: referenceCodeData.street_id,
-    street_name: referenceCodeData.street_name,
-    latitude: referenceCodeData.latitude,
-    longitude: referenceCodeData.longitude,
-    distance_from_start: referenceCodeData.distance_from_start,
-    sequence: referenceCodeData.sequence,
-    created_at: new Date().toISOString()
-  };
+  const stmt = dbInstance.prepare(
+    'INSERT INTO reference_codes (code, street_id, street_name, latitude, longitude, distance_from_start, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
 
-  data.referenceCodes.push(referenceCode);
-  // Don't save here - we'll save once after all codes are created
-  return referenceCode.id;
+  const info = stmt.run(
+    referenceCodeData.code,
+    referenceCodeData.street_id,
+    referenceCodeData.street_name || null,
+    referenceCodeData.latitude,
+    referenceCodeData.longitude,
+    referenceCodeData.distance_from_start || 0,
+    referenceCodeData.sequence || 0,
+    referenceCodeData.created_at || new Date().toISOString()
+  )
+
+  return info.lastInsertRowid
 }
 
 function generateReferenceCodesForStreet(streetId, streetName, coordinates) {
-  if (!data) init();
-  
-  try {
-    // Remove existing reference codes for this street
-    data.referenceCodes = (data.referenceCodes || []).filter(rc => rc.street_id !== streetId);
-    
-    // Generate new reference codes
-    const { generateReferenceCodes } = require('../utils/referenceCodes');
-    const referencePoints = generateReferenceCodes(coordinates, streetId, streetName);
-    
+  const generate = dbInstance.transaction(() => {
+    dbInstance.prepare('DELETE FROM reference_codes WHERE street_id = ?').run(streetId)
+
+    const { generateReferenceCodes } = require('../utils/referenceCodes')
+    const referencePoints = generateReferenceCodes(coordinates, streetId, streetName)
+
     if (!referencePoints || referencePoints.length === 0) {
-      console.warn(`No reference points generated for street ${streetId}`);
-      return [];
+      return []
     }
-    
-    // Save reference codes
-    const createdIds = referencePoints.map(point => {
-      try {
-        return createReferenceCode(point);
-      } catch (error) {
-        console.error(`Error creating reference code for street ${streetId}:`, error);
-        return null;
-      }
-    }).filter(id => id !== null);
-    
-    // Save all at once instead of saving after each creation
-    save();
-    
-    return createdIds;
-  } catch (error) {
-    console.error(`Error in generateReferenceCodesForStreet for street ${streetId}:`, error);
-    throw error;
-  }
+
+    const ids = []
+    const insertStmt = dbInstance.prepare(
+      'INSERT INTO reference_codes (code, street_id, street_name, latitude, longitude, distance_from_start, sequence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+
+    referencePoints.forEach(point => {
+      const info = insertStmt.run(
+        point.code,
+        streetId,
+        streetName,
+        point.latitude,
+        point.longitude,
+        point.distance_from_start || 0,
+        point.sequence || 0,
+        new Date().toISOString()
+      )
+      ids.push(info.lastInsertRowid)
+    })
+
+    return ids
+  })
+
+  return generate()
 }
 
 function deleteReferenceCodesByStreetId(streetId) {
-  if (!data) init();
-  data.referenceCodes = (data.referenceCodes || []).filter(rc => rc.street_id !== streetId);
-  save();
-  return true;
+  dbInstance.prepare('DELETE FROM reference_codes WHERE street_id = ?').run(streetId)
+  return true
 }
 
 function getDb() {
-  if (!data) {
-    init();
+  if (!dbInstance) {
+    init()
   }
-  return {
-    getAllStreets,
-    getStreetById,
-    createStreet,
-    updateStreet,
-    deleteStreet,
-    getAllProperties,
-    getPropertyById,
-    getPropertiesByStreetId,
-    createProperty,
-    updateProperty,
-    deleteProperty,
-    getAllReferenceCodes,
-    getReferenceCodeById,
-    getReferenceCodesByStreetId,
-    createReferenceCode,
-    generateReferenceCodesForStreet,
-    deleteReferenceCodesByStreetId
-  };
+
+  if (!api) {
+    api = {
+      getAllStreets,
+      getStreetById,
+      createStreet,
+      updateStreet,
+      deleteStreet,
+      getAllProperties,
+      getPropertyById,
+      getPropertiesByStreetId,
+      createProperty,
+      updateProperty,
+      deleteProperty,
+      getAllReferenceCodes,
+      getReferenceCodeById,
+      getReferenceCodesByStreetId,
+      createReferenceCode,
+      generateReferenceCodesForStreet,
+      deleteReferenceCodesByStreetId
+    }
+  }
+
+  return api
 }
 
 module.exports = {
   init,
   getDb
-};
+}
+
