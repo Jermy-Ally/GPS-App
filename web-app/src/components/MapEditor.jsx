@@ -55,7 +55,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
     })
 
     if (!MAPBOX_TOKEN || MAPBOX_TOKEN === 'YOUR_MAPBOX_TOKEN_HERE') {
-      console.error('Mapbox token is missing! Please create admin-panel/.env file with VITE_MAPBOX_TOKEN=your_token')
+      console.error('Mapbox token is missing! Please create web-app/.env file with VITE_MAPBOX_TOKEN=your_token')
       // Show a visible error message on the map container
       if (mapContainer.current) {
         mapContainer.current.innerHTML = `
@@ -66,7 +66,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
               <p style="margin: 0 0 10px 0; font-weight: bold;">To fix this:</p>
               <ol style="margin: 0; padding-left: 20px; color: #333;">
                 <li>Get a free token at <a href="https://account.mapbox.com/access-tokens/" target="_blank" style="color: #007bff;">account.mapbox.com</a></li>
-                <li>Create a file named <code>.env</code> in the <code>admin-panel</code> folder</li>
+                <li>Create a file named <code>.env</code> in the <code>web-app</code> folder</li>
                 <li>Add this line: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">VITE_MAPBOX_TOKEN=your_token_here</code></li>
                 <li><strong>Restart the dev server</strong> (Ctrl+C then npm run dev)</li>
               </ol>

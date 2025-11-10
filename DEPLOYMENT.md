@@ -1,4 +1,4 @@
-# Deployment Guide for GPS Navigation Admin Panel
+# Deployment Guide for GPS Navigation Web App
 
 This guide covers multiple deployment options, from quick testing to production-ready solutions.
 
@@ -43,9 +43,9 @@ This guide covers multiple deployment options, from quick testing to production-
    ```json
    {
      "scripts": {
-       "build": "cd admin-panel && npm run build",
+       "build": "cd web-app && npm run build",
        "start": "node server/index.js",
-       "install-all": "npm install && cd admin-panel && npm install"
+       "install-all": "npm install && cd web-app && npm install"
      }
    }
    ```
@@ -94,15 +94,15 @@ Follow Option 1 or 2 for backend deployment.
 
 2. **Deploy frontend:**
    ```bash
-   cd admin-panel
+   cd web-app
    vercel
    ```
 
 3. **Update API URLs:**
    Change `http://localhost:3001` to your backend URL in:
-   - `admin-panel/src/App.jsx`
-   - `admin-panel/src/components/MapEditor.jsx`
-   - `admin-panel/src/components/StreetForm.jsx`
+   - `web-app/src/App.jsx`
+   - `web-app/src/components/MapEditor.jsx`
+   - `web-app/src/components/StreetForm.jsx`
 
 ---
 
@@ -135,10 +135,10 @@ app.use('/api/streets', require('./routes/streets'));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '..', 'admin-panel', 'dist')));
+  app.use(express.static(path.join(__dirname, '..', 'web-app', 'dist')));
   
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'admin-panel', 'dist', 'index.html'));
+    res.sendFile(path.join(__dirname, '..', 'web-app', 'dist', 'index.html'));
   });
 }
 
@@ -149,7 +149,7 @@ app.listen(PORT, () => {
 
 ### 2. Update Frontend API URLs
 
-Create `admin-panel/.env.production`:
+Create `web-app/.env.production`:
 ```env
 VITE_MAPBOX_TOKEN=your_token_here
 VITE_API_URL=https://your-backend-url.com
@@ -174,12 +174,12 @@ Update `package.json`:
 ```json
 {
   "scripts": {
-    "build": "cd admin-panel && npm install && npm run build",
+    "build": "cd web-app && npm install && npm run build",
     "start": "node server/index.js",
     "dev": "concurrently -k \"npm run server\" \"npm run client\"",
     "server": "nodemon server/index.js",
-    "client": "cd admin-panel && npm run dev",
-    "install-all": "npm install && cd admin-panel && npm install"
+    "client": "cd web-app && npm run dev",
+    "install-all": "npm install && cd web-app && npm install"
   }
 }
 ```
@@ -196,11 +196,11 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-COPY admin-panel/package*.json ./admin-panel/
+COPY web-app/package*.json ./web-app/
 
 # Install dependencies
 RUN npm install
-RUN cd admin-panel && npm install
+RUN cd web-app && npm install
 
 # Copy source code
 COPY . .

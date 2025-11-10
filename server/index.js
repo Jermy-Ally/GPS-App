@@ -32,7 +32,7 @@ db.init();
 
 // Serve static files in production (built React app)
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, '..', 'admin-panel', 'dist');
+  const distPath = path.join(__dirname, '..', 'web-app', 'dist');
   app.use(express.static(distPath));
   
   // Handle React Router - all routes serve index.html
@@ -44,7 +44,7 @@ if (process.env.NODE_ENV === 'production') {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
   if (process.env.NODE_ENV === 'production') {
-    console.log(`Serving production build from admin-panel/dist`);
+    console.log(`Serving production build from web-app/dist`);
   }
 });
 

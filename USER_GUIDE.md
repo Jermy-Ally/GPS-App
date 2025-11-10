@@ -11,7 +11,7 @@ The map isn't loading because you need to add your **Mapbox token**. Here's how:
 4. Copy your **default public token** (it starts with `pk.`)
 
 ### Step 2: Create the .env File
-1. In the `admin-panel` folder, create a file named `.env`
+1. In the `web-app` folder, create a file named `.env`
 2. Add this line (replace with your actual token):
    ```
    VITE_MAPBOX_TOKEN=pk.your_actual_token_here
@@ -91,7 +91,7 @@ Once the map loads, here's how everything works:
 ## ❓ Troubleshooting
 
 **Map still not showing after adding token?**
-- Make sure the `.env` file is in the `admin-panel` folder (not the root)
+- Make sure the `.env` file is in the `web-app` folder (not the root)
 - Check that the token starts with `pk.`
 - Restart the dev server after creating/editing `.env`
 - Check browser console (F12) for error messages

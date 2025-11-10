@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "concurrently -k \"npm run server\" \"npm run client\"",
     "server": "nodemon server/index.js",
-    "client": "cd admin-panel && npm run dev",
-    "build": "cd admin-panel && npm install && npm run build",
+    "client": "cd web-app && npm run dev",
+    "build": "cd web-app && npm install && npm run build",
     "start": "node server/index.js",
-    "install-all": "npm install && cd admin-panel && npm install",
+    "install-all": "npm install && cd web-app && npm install",
     "check-setup": "node check-setup.js"
   },
   "keywords": ["navigation", "maps", "custom-streets"],

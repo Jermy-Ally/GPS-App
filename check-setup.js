@@ -23,17 +23,17 @@ if (!fs.existsSync('node_modules')) {
   console.log('✅ Backend dependencies installed');
 }
 
-if (!fs.existsSync('admin-panel/node_modules')) {
-  console.log('⚠️  Admin panel node_modules not found. Run: npm run install-all');
+if (!fs.existsSync('web-app/node_modules')) {
+  console.log('⚠️  Web app node_modules not found. Run: npm run install-all');
   allGood = false;
 } else {
-  console.log('✅ Admin panel dependencies installed');
+  console.log('✅ Web app dependencies installed');
 }
 
 // Check for Mapbox token
-const envPath = path.join('admin-panel', '.env');
+const envPath = path.join('web-app', '.env');
 if (!fs.existsSync(envPath)) {
-  console.log('⚠️  .env file not found in admin-panel folder');
+  console.log('⚠️  .env file not found in web-app folder');
   console.log('   Create it with: VITE_MAPBOX_TOKEN=your_token_here');
   allGood = false;
 } else {

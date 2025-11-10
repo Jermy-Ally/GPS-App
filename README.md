@@ -1,6 +1,6 @@
-# GPS Navigation App - Admin Panel
+# GPS Navigation App - Web Client
 
-A cross-platform GPS navigation system with custom street data editing capabilities. This project includes a web-based admin panel for managing streets and a mobile app (coming soon) for navigation.
+A cross-platform GPS navigation system with custom street data editing capabilities. This project includes a unified web client that serves both end-user pages and the admin console for managing streets, plus a mobile app (coming soon) for navigation.
 
 ## Features
 
@@ -31,14 +31,14 @@ From the project root, run:
 npm run install-all
 ```
 
-This will install dependencies for both the server and the admin panel.
+This will install dependencies for both the server and the web client.
 
 ### 3. Configure Environment Variables
 
-Create a `.env` file in the `admin-panel` directory:
+Create a `.env` file in the `web-app` directory:
 
 ```bash
-cd admin-panel
+cd web-app
 echo "VITE_MAPBOX_TOKEN=your_mapbox_token_here" > .env
 ```
 
@@ -54,11 +54,11 @@ npm run dev
 
 This will start:
 - Backend server on `http://localhost:3001`
-- Admin panel on `http://localhost:3000`
+- Web client on `http://localhost:3000`
 
-### 5. Access the Admin Panel
+### 5. Access the Web Client
 
-Open your browser and navigate to `http://localhost:3000`
+Open your browser and navigate to `http://localhost:3000`. End-user pages are served at the root, and the admin console is available under `/admin`.
 
 ## Usage Guide
 
@@ -95,7 +95,7 @@ GPS App/
 │   ├── database/       # Database setup and schema
 │   ├── routes/         # API routes
 │   └── index.js        # Server entry point
-├── admin-panel/        # React admin interface
+├── web-app/            # React web client (public + admin)
 │   ├── src/
 │   │   ├── components/ # React components
 │   │   └── App.jsx     # Main app component

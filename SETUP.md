@@ -18,17 +18,17 @@ npm run install-all
 ```
 
 ### Step 4: Configure Mapbox Token
-Create a file named `.env` in the `admin-panel` folder:
+Create a file named `.env` in the `web-app` folder:
 
 **Windows (PowerShell):**
 ```powershell
-cd admin-panel
+cd web-app
 echo "VITE_MAPBOX_TOKEN=your_token_here" > .env
 ```
 
 **Mac/Linux:**
 ```bash
-cd admin-panel
+cd web-app
 echo "VITE_MAPBOX_TOKEN=your_token_here" > .env
 ```
 
@@ -43,10 +43,10 @@ npm run dev
 
 This starts:
 - Backend API server on `http://localhost:3001`
-- Admin panel on `http://localhost:3000`
+- Web client on `http://localhost:3000`
 
-### Step 6: Open the Admin Panel
-Open your browser and go to: `http://localhost:3000`
+### Step 6: Open the Web Client
+Open your browser and go to: `http://localhost:3000`. The admin console is available under `/admin`.
 
 ## Using the Admin Panel
 
@@ -77,7 +77,7 @@ Open your browser and go to: `http://localhost:3000`
 ## Troubleshooting
 
 **Map shows "Please set your Mapbox token"**
-- Make sure you created the `.env` file in the `admin-panel` folder
+- Make sure you created the `.env` file in the `web-app` folder
 - Check that the token is correct (should start with `pk.`)
 - Restart the dev server after creating `.env`
 
@@ -87,7 +87,7 @@ Open your browser and go to: `http://localhost:3000`
 - Verify the `data/` folder exists (it's created automatically)
 
 **Port already in use**
-- Change the port in `vite.config.js` (admin panel) or `server/index.js` (backend)
+- Change the port in `vite.config.js` (web app) or `server/index.js` (backend)
 - Or close the application using the port
 
 ## Next Steps
