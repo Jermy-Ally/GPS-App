@@ -6,6 +6,7 @@ import HomePage from './user/HomePage'
 import StreetDirectory from './user/StreetDirectory'
 import NotFound from './user/NotFound'
 import NavigationPage from './user/NavigationPage'
+import { NavigationGraphDev } from './dev'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route index element={<HomePage />} />
         <Route path="directory" element={<StreetDirectory />} />
         <Route path="navigation" element={<NavigationPage />} />
+        <Route path="dev/navigation-graph" element={<NavigationGraphDev />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

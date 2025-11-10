@@ -21,6 +21,11 @@ const SiteLayout = () => {
           <NavLink to="/navigation" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Plan Route
           </NavLink>
+          {import.meta.env.DEV && (
+            <NavLink to="/dev/navigation-graph" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+              Dev Graph
+            </NavLink>
+          )}
         </nav>
       </header>
 

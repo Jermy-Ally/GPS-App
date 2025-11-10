@@ -1,0 +1,76 @@
+.dev-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.dev-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.dev-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #111827;
+}
+
+.dev-header p {
+  color: #4b5563;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.dev-stats {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.dev-chip {
+  background: white;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.dev-status {
+  background: rgba(37, 99, 235, 0.08);
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.dev-status.error {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
+
+.dev-map-section {
+  position: relative;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 20px 45px -30px rgba(15, 23, 42, 0.45);
+}
+
+.dev-map-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 520px;
+}
+
+.dev-map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+
