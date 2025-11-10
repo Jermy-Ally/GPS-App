@@ -17,6 +17,9 @@ const HomePage = () => {
             <Link to="/directory" className="primary-action">
               Browse Street Directory
             </Link>
+            <Link to="/navigation" className="secondary-action">
+              Plan a Route
+            </Link>
           </div>
         </div>
         <div className="hero-visual" role="presentation">

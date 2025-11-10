@@ -18,6 +18,9 @@ const SiteLayout = () => {
           <NavLink to="/directory" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
             Street Directory
           </NavLink>
+          <NavLink to="/navigation" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}>
+            Plan Route
+          </NavLink>
         </nav>
       </header>
 

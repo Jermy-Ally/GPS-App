@@ -5,6 +5,7 @@ import SiteLayout from './layouts/SiteLayout'
 import HomePage from './user/HomePage'
 import StreetDirectory from './user/StreetDirectory'
 import NotFound from './user/NotFound'
+import NavigationPage from './user/NavigationPage'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
       <Route path="/" element={<SiteLayout />}>
         <Route index element={<HomePage />} />
         <Route path="directory" element={<StreetDirectory />} />
+        <Route path="navigation" element={<NavigationPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

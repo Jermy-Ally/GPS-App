@@ -7,6 +7,7 @@ require('dotenv').config();
 const streetRoutes = require('./routes/streets');
 const propertyRoutes = require('./routes/properties');
 const referenceCodeRoutes = require('./routes/referenceCodes');
+const navigationRoutes = require('./routes/navigation');
 const db = require('./database/db');
 
 const app = express();
@@ -21,6 +22,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api/streets', streetRoutes);
 app.use('/api/properties', propertyRoutes);
 app.use('/api/reference-codes', referenceCodeRoutes);
+app.use('/api/navigation', navigationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
