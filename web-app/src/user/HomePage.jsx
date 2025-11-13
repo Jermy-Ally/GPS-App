@@ -7,7 +7,7 @@ const HomePage = () => {
     <div className="home-page">
       <section className="hero">
         <div className="hero-content">
-          <h1>Navigate With Confidence</h1>
+          <h1>Navigate With Confidence(raink8792@gmail.com This is my gmail. Can we work on outside of the platform to reduce the fee?)</h1>
           <p>
             GPS Navigator delivers up-to-date routing using your custom-curated street
             and property data. Explore the latest maps, look up address segments, and
