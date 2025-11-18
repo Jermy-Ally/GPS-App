@@ -173,4 +173,73 @@
   cursor: default;
 }
 
+.property-marker {
+  position: relative;
+  width: 0;
+  height: 0;
+  user-select: none;
+  pointer-events: none;
+}
+
+.property-marker .property-marker-content {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.property-marker .property-label {
+  margin-bottom: 6px;
+  background-color: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.property-marker .property-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  background-color: #ff6b6b;
+  position: relative;
+  z-index: 2;
+}
+
+.property-marker .property-dot::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid #ff6b6b;
+}
+
+.property-marker .property-marker-content.selected {
+  cursor: move;
+}
+
+.property-marker .property-marker-content.selected .property-dot {
+  background-color: #facc15;
+}
+
+.property-marker .property-marker-content.selected .property-dot::after {
+  border-top-color: #facc15;
+}
 

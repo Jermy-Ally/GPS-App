@@ -532,65 +532,31 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
     // Add markers for each property
     properties.forEach(property => {
       if (property.latitude !== undefined && property.longitude !== undefined) {
-        // Create container for icon and label
-        const container = document.createElement('div')
         const isSelected = selectedProperty && selectedProperty.id === property.id
-        container.style.position = 'relative'
-        container.style.display = 'flex'
-        container.style.flexDirection = 'column'
-        container.style.alignItems = 'center'
-        container.style.cursor = isSelected ? 'move' : 'pointer'
-        
-        // Create sharp icon (pin/dot)
-        const icon = document.createElement('div')
-        icon.className = `property-icon ${isSelected ? 'selected' : ''}`
-        icon.style.width = '12px'
-        icon.style.height = '12px'
-        icon.style.borderRadius = '50%'
-        icon.style.backgroundColor = isSelected ? '#facc15' : '#ff6b6b'
-        icon.style.border = '2px solid white'
-        icon.style.boxShadow = '0 2px 4px rgba(0,0,0,0.5)'
-        icon.style.position = 'relative'
-        icon.style.zIndex = '2'
-        
-        // Add a small sharp point at the bottom for precision
-        icon.style.position = 'relative'
-        icon.innerHTML = `
-          <div style="
-            position: absolute;
-            bottom: -4px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 4px solid ${isSelected ? '#facc15' : '#ff6b6b'};
-          "></div>
-        `
-        
-        // Create label above the icon
+        const container = document.createElement('div')
+        container.className = 'property-marker'
+        container.setAttribute('data-property-id', property.id)
+        container.setAttribute('aria-selected', isSelected ? 'true' : 'false')
+
+        const content = document.createElement('div')
+        content.className = 'property-marker-content'
+        content.setAttribute('title', `Property #${property.number} - Click to edit`)
+        if (isSelected) {
+          content.classList.add('selected')
+        }
+
         const label = document.createElement('div')
         label.className = 'property-label'
         label.textContent = `#${property.number}`
-        label.style.position = 'absolute'
-        label.style.bottom = '18px'
-        label.style.left = '50%'
-        label.style.transform = 'translateX(-50%)'
-        label.style.backgroundColor = 'rgba(0, 0, 0, 0.75)'
-        label.style.color = 'white'
-        label.style.padding = '2px 6px'
-        label.style.borderRadius = '3px'
-        label.style.fontSize = '0.7rem'
-        label.style.fontWeight = '600'
-        label.style.whiteSpace = 'nowrap'
-        label.style.boxShadow = '0 1px 3px rgba(0,0,0,0.3)'
-        label.style.pointerEvents = 'none'
-        label.style.zIndex = '3'
-        label.title = `Property #${property.number} - Click to edit`
-        
-        container.appendChild(label)
-        container.appendChild(icon)
+        label.setAttribute('aria-hidden', 'true')
+
+        const dot = document.createElement('div')
+        dot.className = 'property-dot'
+        dot.setAttribute('aria-hidden', 'true')
+
+        content.appendChild(label)
+        content.appendChild(dot)
+        container.appendChild(content)
         
         // Use dragged position if available, otherwise use property coordinates
         const draggedPos = draggedPropertyPositionRef.current
@@ -606,7 +572,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
           .setLngLat([markerLng, markerLat])
           .addTo(map.current)
 
-        container.addEventListener('click', () => {
+        content.addEventListener('click', () => {
           if (onPropertyClick) {
             onPropertyClick(property)
           }
@@ -614,7 +580,7 @@ function MapEditor({ streets, selectedStreet, onStreetSelect, onStreetEdit, onSt
 
         // Setup drag handlers for selected properties
         if (isSelected) {
-          setupPropertyDragHandlers(marker, container, property)
+          setupPropertyDragHandlers(marker, content, property)
         }
 
         propertyMarkersRef.current.push(marker)
